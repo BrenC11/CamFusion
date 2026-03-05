@@ -4,7 +4,6 @@ import asyncio
 import logging
 from typing import Any
 
-import numpy as np
 from PIL import Image, ImageFilter
 
 from app.sources.base import BaseCameraSource
@@ -12,8 +11,10 @@ from app.util.images import compose_panorama, decode_image, encode_jpeg
 
 try:
     import cv2
+    import numpy as np
 except Exception:  # pragma: no cover
     cv2 = None
+    np = None
 
 
 class ExperimentalCompositor:
@@ -106,7 +107,7 @@ class ExperimentalCompositor:
         )
 
     def _apply_optional_warp(self, image: Image.Image, source_cfg: dict) -> Image.Image:
-        if cv2 is None:
+        if cv2 is None or np is None:
             return image
 
         warp_cfg = source_cfg.get("warp") or {}
