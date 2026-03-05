@@ -67,9 +67,8 @@ Each input supports:
 - `snapshot_retries` and `snapshot_delay` for Ring snapshot polling
 - `crop`: `left/right/top/bottom` as fraction or percent
 - `scale`: zoom factor (default `1.0`)
-- `warp` (experimental):
-  - `affine`: `a,b,c,d,e,f`
-  - `perspective`: `9` comma-separated values
+- `warp_affine` (experimental): `a,b,c,d,e,f`
+- `warp_perspective` (experimental): `9` comma-separated values
 
 ## Example Configs
 

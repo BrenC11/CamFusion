@@ -58,12 +58,11 @@ schema:
       device_name: str?
       snapshot_retries: int?
       snapshot_delay: int?
+      warp_affine: str?
+      warp_perspective: str?
       scale: float?
       crop:
         left: float?
         right: float?
         top: float?
         bottom: float?
-      warp:
-        affine: str?
-        perspective: str?

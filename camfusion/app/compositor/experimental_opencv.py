@@ -110,8 +110,8 @@ class ExperimentalCompositor:
             return image
 
         warp_cfg = source_cfg.get("warp") or {}
-        affine = warp_cfg.get("affine")
-        perspective = warp_cfg.get("perspective")
+        affine = warp_cfg.get("affine") or source_cfg.get("warp_affine")
+        perspective = warp_cfg.get("perspective") or source_cfg.get("warp_perspective")
         if not affine and not perspective:
             return image
 
