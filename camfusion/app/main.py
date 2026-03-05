@@ -167,6 +167,37 @@ def build_sources(settings: dict, supervisor_token: str, ring_auth: RingAuthStor
     return sources
 
 
+async def maybe_auto_login_ring(settings: dict, ring_auth: RingAuthStore) -> None:
+    account = str(settings.get("ring_account", "default") or "default").strip() or "default"
+    username = str(settings.get("ring_username", "") or "").strip()
+    password = str(settings.get("ring_password", "") or "").strip()
+    twofa_code = str(settings.get("ring_2fa_code", "") or "").strip() or None
+
+    if not username or not password:
+        return
+
+    existing = ring_auth.get_account(account)
+    if isinstance(existing, dict) and isinstance(existing.get("token"), dict) and existing.get("token"):
+        LOGGER.info("ring account '%s' already has stored credentials; skipping auto-login", account)
+        return
+
+    try:
+        await ring_auth.login(
+            account=account,
+            username=username,
+            password=password,
+            twofa_code=twofa_code,
+        )
+        LOGGER.info("ring auto-login successful for account '%s'", account)
+    except RingRequires2FA:
+        LOGGER.warning(
+            "ring auto-login requires 2FA for account '%s'; set ring_2fa_code once or call POST /ring/login",
+            account,
+        )
+    except RingAuthError as err:
+        LOGGER.warning("ring auto-login failed for account '%s': %s", account, err)
+
+
 async def build_compositor(settings: dict, supervisor_token: str) -> Any:
     mode = settings.get("mode", "dashboard")
 
@@ -209,6 +240,7 @@ async def on_startup() -> None:
         settings = load_options()
         supervisor_token = os.environ.get("SUPERVISOR_TOKEN") or os.environ.get("HASSIO_TOKEN", "")
         state.ring_auth = RingAuthStore(path=os.environ.get("CAMFUSION_RING_AUTH_FILE", "/data/ring_accounts.json"), logger=LOGGER)
+        await maybe_auto_login_ring(settings, state.ring_auth)
 
         state.settings = settings
         state.sources = build_sources(settings, supervisor_token, state.ring_auth)

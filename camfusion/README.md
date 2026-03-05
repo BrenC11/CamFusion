@@ -54,6 +54,10 @@ Core options in add-on config:
 - `output_width`: e.g. `1280` or `1920`
 - `output_height`: `0` for auto height
 - `blend_feather_px`: optional seam blur width (experimental mode)
+- `ring_account`: Ring account alias (default `default`)
+- `ring_username`: Ring email for optional auto-login on startup
+- `ring_password`: Ring password for optional auto-login on startup
+- `ring_2fa_code`: one-time OTP code (optional, used when Ring requests 2FA)
 - `inputs`: list of 2-4 camera definitions
 
 Each input supports:
@@ -118,6 +122,18 @@ inputs:
 
 ### Direct Ring login + Ring cameras
 
+Method A (recommended): configure auto-login in Add-on options, then restart:
+
+```yaml
+ring_account: default
+ring_username: you@example.com
+ring_password: YOUR_PASSWORD
+# set once only when Ring asks for OTP
+ring_2fa_code: ""
+```
+
+Method B: authenticate via API endpoint.
+
 1. Authenticate Ring account:
 
 ```bash
@@ -156,6 +172,8 @@ inputs:
     device_name: Back Garden
 ```
 
+4. After first successful login, clear `ring_2fa_code` in options.
+
 ## Raspberry Pi Performance Notes
 
 - `dashboard` mode is recommended for Pi (`1-5 FPS`) and stays stable under moderate CPU.
@@ -181,3 +199,4 @@ inputs:
 
 - Uses Supervisor token from add-on environment (`SUPERVISOR_TOKEN` / `HASSIO_TOKEN`).
 - Token values are never printed in logs.
+- Ring tokens are stored in add-on data: `/data/ring_accounts.json`.
