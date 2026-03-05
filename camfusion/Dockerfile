@@ -10,6 +10,8 @@ WORKDIR /opt/camfusion
 RUN apk add --no-cache \
     ffmpeg \
     py3-opencv \
+    py3-numpy \
+    py3-pillow \
     libstdc++ \
     libgcc \
     jpeg-dev \
