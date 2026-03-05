@@ -49,10 +49,15 @@ schema:
   output_height: int(0,2160)
   blend_feather_px: int(0,200)?
   inputs:
-    - type: list(rtsp|ha_camera|file)
+    - type: list(rtsp|ha_camera|file|ring)
       url: str?
       entity_id: str?
       path: str?
+      account: str?
+      device_id: int?
+      device_name: str?
+      snapshot_retries: int?
+      snapshot_delay: int?
       scale: float?
       crop:
         left: float?

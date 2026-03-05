@@ -8,7 +8,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from app.compositor.dashboard import DashboardCompositor
@@ -17,9 +18,11 @@ from app.compositor.live_ffmpeg import LiveFFmpegCompositor
 from app.sources.base import BaseCameraSource
 from app.sources.file import FileCameraSource
 from app.sources.ha_camera import HACameraSource
+from app.sources.ring import RingCameraSource
 from app.sources.rtsp import RTSPCameraSource
 from app.util.images import encode_jpeg, placeholder
 from app.util.mjpeg import multipart_chunk
+from app.util.ring_auth import RingAuthError, RingAuthStore, RingRequires2FA
 
 LOGGER = logging.getLogger("camfusion")
 
@@ -54,6 +57,7 @@ class AppState:
     settings: dict = field(default_factory=dict)
     sources: list[BaseCameraSource] = field(default_factory=list)
     compositor: Any = None
+    ring_auth: RingAuthStore | None = None
     frame_store: FrameStore = field(default_factory=FrameStore)
     startup_error: str | None = None
     started_monotonic: float = field(default_factory=time.monotonic)
@@ -62,6 +66,13 @@ class AppState:
 
 state = AppState()
 app = FastAPI(title="CamFusion", version="0.1.0")
+
+
+class RingLoginRequest(BaseModel):
+    account: str = "default"
+    username: str
+    password: str
+    twofa_code: str | None = None
 
 
 def load_options() -> dict:
@@ -109,7 +120,7 @@ def load_options() -> dict:
     return merged
 
 
-def build_sources(settings: dict, supervisor_token: str) -> list[BaseCameraSource]:
+def build_sources(settings: dict, supervisor_token: str, ring_auth: RingAuthStore) -> list[BaseCameraSource]:
     sources: list[BaseCameraSource] = []
 
     for idx, raw_input in enumerate(settings.get("inputs", [])):
@@ -136,6 +147,17 @@ def build_sources(settings: dict, supervisor_token: str) -> list[BaseCameraSourc
                     config=raw_input,
                     logger=LOGGER,
                     supervisor_token=supervisor_token,
+                )
+            )
+            continue
+
+        if source_type == "ring":
+            sources.append(
+                RingCameraSource(
+                    name=name,
+                    config=raw_input,
+                    logger=LOGGER,
+                    auth_store=ring_auth,
                 )
             )
             continue
@@ -186,9 +208,10 @@ async def on_startup() -> None:
     try:
         settings = load_options()
         supervisor_token = os.environ.get("SUPERVISOR_TOKEN") or os.environ.get("HASSIO_TOKEN", "")
+        state.ring_auth = RingAuthStore(path=os.environ.get("CAMFUSION_RING_AUTH_FILE", "/data/ring_accounts.json"), logger=LOGGER)
 
         state.settings = settings
-        state.sources = build_sources(settings, supervisor_token)
+        state.sources = build_sources(settings, supervisor_token, state.ring_auth)
 
         for source in state.sources:
             await source.start()
@@ -252,6 +275,50 @@ async def healthz() -> JSONResponse:
     if state.startup_error:
         stats["error"] = state.startup_error
     return JSONResponse(stats)
+
+
+@app.post("/ring/login")
+async def ring_login(payload: RingLoginRequest) -> JSONResponse:
+    ring_auth = state.ring_auth
+    if ring_auth is None:
+        raise HTTPException(status_code=503, detail="ring auth service is not initialized")
+
+    try:
+        account_info = await ring_auth.login(
+            account=payload.account,
+            username=payload.username,
+            password=payload.password,
+            twofa_code=payload.twofa_code,
+        )
+    except RingRequires2FA:
+        return JSONResponse(
+            {"status": "requires_2fa", "account": payload.account},
+            status_code=428,
+        )
+    except RingAuthError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+
+    return JSONResponse({"status": "ok", "account": account_info})
+
+
+@app.get("/ring/accounts")
+async def ring_accounts() -> JSONResponse:
+    ring_auth = state.ring_auth
+    if ring_auth is None:
+        raise HTTPException(status_code=503, detail="ring auth service is not initialized")
+    return JSONResponse({"accounts": ring_auth.list_accounts()})
+
+
+@app.get("/ring/devices")
+async def ring_devices(account: str = Query(default="default")) -> JSONResponse:
+    ring_auth = state.ring_auth
+    if ring_auth is None:
+        raise HTTPException(status_code=503, detail="ring auth service is not initialized")
+    try:
+        devices = await ring_auth.list_devices(account=account)
+    except RingAuthError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    return JSONResponse({"account": account, "devices": devices})
 
 
 if __name__ == "__main__":

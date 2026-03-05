@@ -7,6 +7,9 @@
 - `GET /stream.mjpeg` -> multipart MJPEG stream
 - `GET /snapshot.jpg` -> latest JPEG frame
 - `GET /healthz` -> runtime stats and status
+- `POST /ring/login` -> authenticate and store Ring token
+- `GET /ring/accounts` -> list stored Ring accounts
+- `GET /ring/devices?account=default` -> list Ring cameras for account
 
 Default port: `8099`
 
@@ -16,6 +19,7 @@ Default port: `8099`
   - `rtsp` URL
   - `ha_camera` entity (`camera.some_entity`) via Home Assistant Core API
   - `file` path (looped)
+  - `ring` camera via direct Ring login (ring-doorbell auth + snapshot API)
 - Modes:
   - `dashboard` (default): low CPU, snapshot-driven, 1-5 FPS on Raspberry Pi
   - `live`: ffmpeg `xstack` compositing, target 10-15 FPS, auto fallback if stream ingestion fails
@@ -54,10 +58,13 @@ Core options in add-on config:
 
 Each input supports:
 
-- `type`: `rtsp | ha_camera | file`
+- `type`: `rtsp | ha_camera | file | ring`
 - `url` for RTSP
 - `entity_id` for Home Assistant camera entities
 - `path` for local file input
+- `account` for Ring account alias (default `default`)
+- `device_id` or `device_name` for Ring camera selection
+- `snapshot_retries` and `snapshot_delay` for Ring snapshot polling
 - `crop`: `left/right/top/bottom` as fraction or percent
 - `scale`: zoom factor (default `1.0`)
 - `warp` (experimental):
@@ -110,6 +117,46 @@ inputs:
     path: /media/demo2.mp4
 ```
 
+### Direct Ring login + Ring cameras
+
+1. Authenticate Ring account:
+
+```bash
+curl -X POST http://<HA_HOST>:8099/ring/login \\
+  -H 'Content-Type: application/json' \\
+  -d '{"account":"default","username":"you@example.com","password":"YOUR_PASSWORD"}'
+```
+
+If Ring returns 2FA required, call again with `twofa_code`:
+
+```bash
+curl -X POST http://<HA_HOST>:8099/ring/login \\
+  -H 'Content-Type: application/json' \\
+  -d '{"account":"default","username":"you@example.com","password":"YOUR_PASSWORD","twofa_code":"123456"}'
+```
+
+2. List available Ring cameras:
+
+```bash
+curl "http://<HA_HOST>:8099/ring/devices?account=default"
+```
+
+3. Use Ring inputs in add-on config:
+
+```yaml
+mode: dashboard
+fps: 3
+layout: hstack
+output_width: 1280
+inputs:
+  - type: ring
+    account: default
+    device_name: Front Door
+  - type: ring
+    account: default
+    device_name: Back Garden
+```
+
 ## Raspberry Pi Performance Notes
 
 - `dashboard` mode is recommended for Pi (`1-5 FPS`) and stays stable under moderate CPU.
@@ -124,6 +171,10 @@ inputs:
 - LIVE stream endpoint used when available:
   - `http://supervisor/core/api/camera_proxy_stream/<entity_id>`
 - If `camera_proxy_stream` fails or stalls, `live` mode automatically falls back to snapshot compositing at higher FPS.
+- Ring source notes:
+  - If not logged in, source panels show `NO SIGNAL` until `POST /ring/login` succeeds.
+  - If Ring needs OTP, `/ring/login` returns `status=requires_2fa` and HTTP `428`.
+  - Ring tokens are stored in `/data/ring_accounts.json`.
 - If a source fails, that panel shows `NO SIGNAL` and the composite stream remains online.
 - Check add-on logs for source errors and `ffmpeg` warnings.
 
