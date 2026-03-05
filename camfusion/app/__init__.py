@@ -1,0 +1,1 @@
+"""CamFusion application package."""
