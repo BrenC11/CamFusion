@@ -15,7 +15,9 @@ RUN apk add --no-cache \
     zlib-dev
 
 COPY requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+RUN apk add --no-cache --virtual .build-deps build-base \
+    && pip3 install --no-cache-dir -r /tmp/requirements.txt \
+    && apk del .build-deps
 
 COPY app /opt/camfusion/app
 COPY run.sh /run.sh
